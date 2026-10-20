@@ -43,10 +43,13 @@ function App() {
       <h1>Family Reunification</h1>
       <nav>
         <button type="button" aria-pressed={screen === 'search'} onClick={() => setScreen('search')}>Find someone</button>
+        <button type="button" aria-pressed={screen === 'check'} onClick={() => setScreen('check')}>Check request</button>
         <button type="button" aria-pressed={screen === 'volunteer'} onClick={() => setScreen('volunteer')}>Volunteer</button>
       </nav>
       {screen === 'search' ? (
         <SearchForm />
+      ) : screen === 'check' ? (
+        <CheckRequestForm />
       ) : !code ? (
         <>
           {notice && <p role="alert">{notice}</p>}
@@ -190,21 +193,23 @@ function SearchForm() {
   }
 
   return (
-    <form onSubmit={submit}>
-      <h2>Search for someone</h2>
-      <label>
-        Name or nickname <input value={name} onChange={(e) => setName(e.target.value)} required />
-      </label>
+    <>
+      <form onSubmit={submit}>
+        <h2>Search for someone</h2>
+        <label>
+          Name or nickname <input value={name} onChange={(e) => setName(e.target.value)} required />
+        </label>
 
-      <ButtonGroup
-        legend="Age (optional)"
-        options={AGE_RANGES.map((range) => [range, range])}
-        value={ageRange}
-        onChange={(range) => setAgeRange(ageRange === range ? null : range)}
-      />
+        <ButtonGroup
+          legend="Age (optional)"
+          options={AGE_RANGES.map((range) => [range, range])}
+          value={ageRange}
+          onChange={(range) => setAgeRange(ageRange === range ? null : range)}
+        />
 
-      <button disabled={!name.trim()}>Search</button>
-      {error && <p role="alert">{error}</p>}
+        <button disabled={!name.trim()}>Search</button>
+        {error && <p role="alert">{error}</p>}
+      </form>
 
       {results?.length === 0 && (
         // Same words whether nobody matched or only hidden Registrants did (ADR 0001).
@@ -223,9 +228,102 @@ function SearchForm() {
               <strong>{r.known_as}</strong>
               {r.age_range && ` (${r.age_range})`}
               {r.description && <p>{r.description}</p>}
+              <ContactRequest registrantId={r.id} />
             </li>
           ))}
         </ul>
+      )}
+    </>
+  );
+}
+
+const EMPTY_REQUEST = { seeker_name: '', relationship: '', message: '', seeker_contact: '' };
+
+function ContactRequest({ registrantId }) {
+  const [open, setOpen] = useState(false);
+  const [fields, setFields] = useState(EMPTY_REQUEST);
+  const [requestCode, setRequestCode] = useState(null);
+  const [error, setError] = useState(null);
+  const setField = (field) => (e) => setFields((f) => ({ ...f, [field]: e.target.value }));
+
+  async function submit(e) {
+    e.preventDefault();
+    setError(null);
+    try {
+      const res = await fetch('/api/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ registrant_id: registrantId, ...fields }),
+      });
+      if (res.status === 400 || res.status === 429) return setError((await res.json()).error);
+      if (!res.ok) throw new Error();
+      setRequestCode((await res.json()).request_code);
+    } catch {
+      setError("Couldn't send. Try again.");
+    }
+  }
+
+  if (requestCode) {
+    return (
+      <div role="status">
+        <p>Request sent. Your Request Code is:</p>
+        <p className="request-code" data-testid="request-code">{requestCode}</p>
+        <p>Write this code down. Use Check request on any device to see if they replied.</p>
+      </div>
+    );
+  }
+  if (!open) return <button type="button" onClick={() => setOpen(true)}>Send a request</button>;
+  return (
+    <form onSubmit={submit}>
+      <label>
+        Your name <input value={fields.seeker_name} onChange={setField('seeker_name')} required />
+      </label>
+      <label>
+        How you know them (optional) <input value={fields.relationship} onChange={setField('relationship')} />
+      </label>
+      <label>
+        Short message (optional) <textarea value={fields.message} onChange={setField('message')} />
+      </label>
+      <label>
+        How to reach you (optional) <input value={fields.seeker_contact} onChange={setField('seeker_contact')} />
+      </label>
+      <button disabled={!fields.seeker_name.trim()}>Send request</button>
+      {error && <p role="alert">{error}</p>}
+    </form>
+  );
+}
+
+function CheckRequestForm() {
+  const [requestCode, setRequestCode] = useState('');
+  const [result, setResult] = useState(null);
+
+  async function submit(e) {
+    e.preventDefault();
+    setResult(null);
+    try {
+      const res = await fetch(`/api/requests/${encodeURIComponent(requestCode.trim())}`);
+      if (res.status === 404 || res.status === 429) return setResult({ ok: false, text: (await res.json()).error });
+      if (!res.ok) throw new Error();
+      setResult({ ok: true });
+    } catch {
+      setResult({ ok: false, text: "Couldn't check. Try again." });
+    }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <h2>Check a request</h2>
+      <label>
+        Request Code <input value={requestCode} onChange={(e) => setRequestCode(e.target.value)} required />
+      </label>
+      <button disabled={!requestCode.trim()}>Check</button>
+      {result?.ok === false && <p role="alert">{result.text}</p>}
+      {result?.ok && (
+        // Same words for every answer except a yes (ADR 0001).
+        <div role="status">
+          <p>Your request has been passed on.</p>
+          <p>Some requests are never answered. Keep searching, and check back here later.</p>
+        </div>
       )}
     </form>
   );

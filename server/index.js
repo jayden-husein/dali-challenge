@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const path = require('node:path');
 const express = require('express');
 const { Pool } = require('pg');
@@ -35,6 +36,7 @@ app.get('/api/shelter', requireShelter, (req, res) => {
 
 const AGE_RANGES = ['0-4', '5-12', '13-17', '18-64', '65+'];
 const VISIBILITIES = ['findable', 'not_findable'];
+const optionalText = (value) => (typeof value === 'string' && value.trim()) || null;
 
 app.post('/api/registrants', requireShelter, express.json(), async (req, res) => {
   const { known_as, age_range, description, visibility } = req.body ?? {};
@@ -50,7 +52,7 @@ app.post('/api/registrants', requireShelter, express.json(), async (req, res) =>
   const { rows } = await pool.query(
     `INSERT INTO registrants (shelter_id, known_as, age_range, description, visibility)
      VALUES ($1, $2, $3, $4, $5) RETURNING id, known_as`,
-    [req.shelter.id, known_as.trim(), age_range ?? null, (typeof description === 'string' && description.trim()) || null, visibility],
+    [req.shelter.id, known_as.trim(), age_range ?? null, optionalText(description), visibility],
   );
   res.status(201).json({ ...rows[0], shelter: req.shelter.name });
 });
@@ -78,6 +80,53 @@ app.get('/api/search', searchLimit, async (req, res) => {
     [name.trim(), age_range ?? null],
   );
   res.json(rows);
+});
+
+// Plain words that are hard to mishear or misspell. 48 × 48 × 10,000 ≈ 23 million
+// Request Codes, so rate-limited guessing is impractical.
+const CODE_WORDS = [
+  'APPLE', 'BEAR', 'BIRD', 'BOAT', 'BREAD', 'CAKE', 'CHAIR', 'CLOUD', 'CORN', 'DESK',
+  'DOOR', 'DRUM', 'DUCK', 'FARM', 'FISH', 'FLAG', 'FROG', 'GOAT', 'GRAPE', 'HAT',
+  'HILL', 'HORSE', 'JAR', 'KITE', 'LAKE', 'LAMP', 'LEAF', 'LION', 'MILK', 'MOON',
+  'NEST', 'OCEAN', 'PEAR', 'PIANO', 'RAIN', 'RIVER', 'ROBIN', 'ROSE', 'SHELL', 'SHIP',
+  'SNOW', 'STAR', 'SUN', 'TIGER', 'TRAIN', 'TREE', 'TRUCK', 'WOLF',
+];
+const pick = (list) => list[crypto.randomInt(list.length)];
+const newRequestCode = () => `${pick(CODE_WORDS)}-${pick(CODE_WORDS)}-${String(crypto.randomInt(10_000)).padStart(4, '0')}`;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Per IP, so nobody can flood Volunteers with requests or guess Request Codes.
+const requestLimit = rateLimit({ windowMs: 60_000, limit: 10, message: { error: 'Too many requests sent. Wait a minute and try again.' } });
+const checkLimit = rateLimit({ windowMs: 60_000, limit: 30, message: { error: 'Too many checks. Wait a minute and try again.' } });
+
+// Open route. Any existing Registrant gets the request, even Not findable or Departed,
+// so the Seeker sees the same answer either way (ADR 0001).
+app.post('/api/requests', requestLimit, express.json(), async (req, res) => {
+  const { registrant_id, seeker_name, relationship, message, seeker_contact } = req.body ?? {};
+  if (typeof seeker_name !== 'string' || !seeker_name.trim()) {
+    return res.status(400).json({ error: 'Enter your name.' });
+  }
+  const { rows } = UUID.test(registrant_id ?? '')
+    ? await pool.query('SELECT 1 FROM registrants WHERE id = $1', [registrant_id])
+    : { rows: [] };
+  if (!rows[0]) return res.status(404).json({ error: 'Not found.' });
+  // A clash is rare, so just try a new code.
+  for (;;) {
+    const request_code = newRequestCode();
+    const { rowCount } = await pool.query(
+      `INSERT INTO contact_requests (registrant_id, request_code, seeker_name, relationship, message, seeker_contact)
+       VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (request_code) DO NOTHING`,
+      [registrant_id, request_code, seeker_name.trim(), optionalText(relationship), optionalText(message), optionalText(seeker_contact)],
+    );
+    if (rowCount) return res.status(201).json({ request_code });
+  }
+});
+
+// Open route. Only "passed on" until Volunteers can answer; never anything about the Registrant.
+app.get('/api/requests/:code', checkLimit, async (req, res) => {
+  const { rows } = await pool.query('SELECT 1 FROM contact_requests WHERE request_code = $1', [req.params.code.trim().toUpperCase()]);
+  if (!rows[0]) return res.status(404).json({ error: 'No request with that code. Check it and try again.' });
+  res.json({ status: 'passed_on' });
 });
 
 app.use(express.static(path.join(__dirname, '..', 'dist')));
