@@ -6,6 +6,8 @@ services:
     plan: free
     buildCommand: npm ci && npm run build
     startCommand: npm start
+    # Deploy only after GitHub checks (the Test workflow) pass on the commit.
+    autoDeployTrigger: checksPass
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
