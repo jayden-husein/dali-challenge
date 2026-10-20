@@ -1,0 +1,17 @@
+# Render Blueprint: one web service + one Postgres, wired together.
+services:
+  - type: web
+    name: dali-challenge
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dali-db
+          property: connectionString
+databases:
+  - name: dali-db
+    plan: free
