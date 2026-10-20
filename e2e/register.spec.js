@@ -41,6 +41,7 @@ test("a Registrant belongs to the Shelter Code's shelter", async ({ request }) =
 
 test('Volunteer enters a Shelter Code and registers someone', async ({ page }) => {
   await page.goto('/');
+  await page.getByRole('button', { name: 'Volunteer' }).click();
   await page.getByLabel('Shelter Code').fill('WRONG-1');
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByText("That Shelter Code didn't work")).toBeVisible();

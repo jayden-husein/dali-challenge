@@ -7,6 +7,7 @@ function App() {
   const [code, setCode] = useState(() => localStorage.getItem('shelterCode'));
   const [shelter, setShelter] = useState(null);
   const [notice, setNotice] = useState(null);
+  const [screen, setScreen] = useState(code ? 'volunteer' : 'search');
 
   // A remembered code is checked again, in case it was changed.
   useEffect(() => {
@@ -40,7 +41,13 @@ function App() {
   return (
     <main>
       <h1>Family Reunification</h1>
-      {!code ? (
+      <nav>
+        <button type="button" aria-pressed={screen === 'search'} onClick={() => setScreen('search')}>Find someone</button>
+        <button type="button" aria-pressed={screen === 'volunteer'} onClick={() => setScreen('volunteer')}>Volunteer</button>
+      </nav>
+      {screen === 'search' ? (
+        <SearchForm />
+      ) : !code ? (
         <>
           {notice && <p role="alert">{notice}</p>}
           <ShelterCodeForm onSet={remember} />
@@ -155,6 +162,71 @@ function RegisterForm({ code, onRejected }) {
 
       <button disabled={!registrant.visibility || !registrant.known_as.trim()}>Save</button>
       {status && <p role={status.ok ? 'status' : 'alert'}>{status.text}</p>}
+    </form>
+  );
+}
+
+const SEARCH_CAP = 20;
+
+function SearchForm() {
+  const [name, setName] = useState('');
+  const [ageRange, setAgeRange] = useState(null);
+  const [results, setResults] = useState(null);
+  const [error, setError] = useState(null);
+
+  async function submit(e) {
+    e.preventDefault();
+    setError(null);
+    const params = new URLSearchParams({ name: name.trim() });
+    if (ageRange) params.set('age_range', ageRange);
+    try {
+      const res = await fetch(`/api/search?${params}`);
+      if (res.status === 400 || res.status === 429) return setError((await res.json()).error);
+      if (!res.ok) throw new Error();
+      setResults(await res.json());
+    } catch {
+      setError("Couldn't search. Try again.");
+    }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <h2>Search for someone</h2>
+      <label>
+        Name or nickname <input value={name} onChange={(e) => setName(e.target.value)} required />
+      </label>
+
+      <ButtonGroup
+        legend="Age (optional)"
+        options={AGE_RANGES.map((range) => [range, range])}
+        value={ageRange}
+        onChange={(range) => setAgeRange(ageRange === range ? null : range)}
+      />
+
+      <button disabled={!name.trim()}>Search</button>
+      {error && <p role="alert">{error}</p>}
+
+      {results?.length === 0 && (
+        // Same words whether nobody matched or only hidden Registrants did (ADR 0001).
+        <p role="status">
+          No matches found. They may not be registered yet, or may be using a different name. Try a nickname, check
+          spelling, or search again later.
+        </p>
+      )}
+      {results?.length >= SEARCH_CAP && (
+        <p role="status">Showing the {SEARCH_CAP} closest matches. Add an age range or more of the name to narrow it down.</p>
+      )}
+      {results?.length > 0 && (
+        <ul>
+          {results.map((r) => (
+            <li key={r.id}>
+              <strong>{r.known_as}</strong>
+              {r.age_range && ` (${r.age_range})`}
+              {r.description && <p>{r.description}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
     </form>
   );
 }
