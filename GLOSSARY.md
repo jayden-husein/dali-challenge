@@ -35,5 +35,5 @@ A short readable code given to a Seeker when they send a Contact Request, used t
 _Avoid_: Ticket, tracking number, case ID
 
 **Shelter Code**:
-A short shared secret per shelter that lets a Volunteer see and answer that shelter's Contact Requests.
+A short shared secret per shelter that lets a Volunteer register people at that shelter and see and answer its Contact Requests.
 _Avoid_: Password, login, PIN
