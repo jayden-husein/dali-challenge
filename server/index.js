@@ -87,8 +87,9 @@ app.post('/api/registrants/:id', requireShelter, express.json(), async (req, res
 // Per IP, so nobody can scrape Registrants by searching.
 const searchLimit = rateLimit({ windowMs: 60_000, limit: 30, message: { error: 'Too many searches. Wait a minute and try again.' } });
 
-// Open route (ADR 0001): only Findable, non-Departed Registrants, and only these fields.
-app.get('/api/search', searchLimit, async (req, res) => {
+// Matches a name and age range among the Registrants `allowed` lets through.
+// `allowed` can use `values` from $3 on. Results carry only these fields (ADR 0001).
+async function sendNameMatches(req, res, allowed, values = []) {
   const { name, age_range } = req.query;
   if (typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'Enter a name to search.' });
@@ -100,14 +101,24 @@ app.get('/api/search', searchLimit, async (req, res) => {
   // A Registrant with no age range recorded could be any age, so they stay in.
   const { rows } = await pool.query(
     `SELECT id, known_as, age_range, description FROM registrants
-     WHERE visibility = 'findable' AND NOT departed AND (known_as % $1 OR $1 <% known_as)
+     WHERE (${allowed}) AND (known_as % $1 OR $1 <% known_as)
        AND ($2::text IS NULL OR age_range = $2 OR age_range IS NULL)
      ORDER BY word_similarity($1, known_as) DESC
      LIMIT 20`,
-    [name.trim(), age_range ?? null],
+    [name.trim(), age_range ?? null, ...values],
   );
   res.json(rows);
-});
+}
+
+const FINDABLE = `visibility = 'findable' AND NOT departed`;
+
+// Open route (ADR 0001): only Findable, non-Departed Registrants.
+app.get('/api/search', searchLimit, (req, res) => sendNameMatches(req, res, FINDABLE));
+
+// Duplicate check before registering: also everyone at this shelter ($3),
+// but never another shelter's Not findable or Departed Registrants.
+app.get('/api/possible-matches', requireShelter, (req, res) =>
+  sendNameMatches(req, res, `${FINDABLE} OR shelter_id = $3`, [req.shelter.id]));
 
 // Plain words that are hard to mishear or misspell. 48 × 48 × 10,000 ≈ 23 million
 // Request Codes, so rate-limited guessing is impractical.

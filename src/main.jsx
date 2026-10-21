@@ -129,19 +129,33 @@ function ButtonGroup({ legend, options, value, onChange }) {
 
 function RegisterForm({ code, onRejected, onSaved }) {
   const [registrant, setRegistrant] = useState(EMPTY_REGISTRANT);
+  // Possible existing records, shown before saving so nobody is registered twice.
+  const [matches, setMatches] = useState(null);
   const [status, setStatus] = useState(null);
-  const setField = (field, value) => setRegistrant((r) => ({ ...r, [field]: value }));
+  const setField = (field, value) => {
+    setRegistrant((r) => ({ ...r, [field]: value }));
+    setMatches(null);
+  };
 
-  async function submit(e) {
-    e.preventDefault();
+  async function save(checkFirst) {
     setStatus(null);
     try {
+      if (checkFirst) {
+        const params = new URLSearchParams({ name: registrant.known_as.trim() });
+        if (registrant.age_range) params.set('age_range', registrant.age_range);
+        const res = await shelterFetch(code, onRejected, `/api/possible-matches?${params}`);
+        if (res.status === 401) return;
+        if (!res.ok) throw new Error();
+        const found = await res.json();
+        if (found.length) return setMatches(found);
+      }
       const res = await shelterFetch(code, onRejected, '/api/registrants', registrant);
       if (res.status === 401) return;
       if (res.status === 400) return setStatus({ ok: false, text: (await res.json()).error });
       if (!res.ok) throw new Error();
       setStatus({ ok: true, text: `Saved. ${registrant.known_as.trim()} is registered.` });
       setRegistrant(EMPTY_REGISTRANT);
+      setMatches(null);
       onSaved();
     } catch {
       // Keep everything typed so the Volunteer can just try again.
@@ -149,8 +163,13 @@ function RegisterForm({ code, onRejected, onSaved }) {
     }
   }
 
+  function discard() {
+    setRegistrant(EMPTY_REGISTRANT);
+    setMatches(null);
+  }
+
   return (
-    <form onSubmit={submit} aria-labelledby="register-heading">
+    <form onSubmit={(e) => { e.preventDefault(); save(true); }} aria-labelledby="register-heading">
       <h2 id="register-heading">Register someone</h2>
       <label>
         Name they go by{' '}
@@ -176,7 +195,25 @@ function RegisterForm({ code, onRejected, onSaved }) {
         onChange={(visibility) => setField('visibility', visibility)}
       />
 
-      <button disabled={!registrant.visibility || !registrant.known_as.trim()}>Save</button>
+      {matches ? (
+        <section aria-labelledby="matches-heading">
+          <h3 id="matches-heading">Possible existing records</h3>
+          <p>They may already be registered. Check before saving. Two people can share a name.</p>
+          <ul>
+            {matches.map((r) => (
+              <li key={r.id}>
+                <strong>{r.known_as}</strong>
+                {r.age_range && ` (${r.age_range})`}
+                {r.description && ` · ${r.description}`}
+              </li>
+            ))}
+          </ul>
+          <button type="button" onClick={() => save(false)}>Save anyway</button>{' '}
+          <button type="button" onClick={discard}>Don't save</button>
+        </section>
+      ) : (
+        <button disabled={!registrant.visibility || !registrant.known_as.trim()}>Save</button>
+      )}
       {status && <p role={status.ok ? 'status' : 'alert'}>{status.text}</p>}
     </form>
   );

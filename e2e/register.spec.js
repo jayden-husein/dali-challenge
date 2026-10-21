@@ -50,13 +50,13 @@ test('Volunteer enters a Shelter Code and registers someone', async ({ page }) =
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByText('Shelter: Test Shelter')).toBeVisible();
 
-  await page.getByLabel('Name they go by').fill('Ben');
+  await page.getByLabel('Name they go by').fill('Zebulon');
   await page.getByRole('button', { name: '18-64' }).click();
   const save = page.getByRole('button', { name: 'Save' });
   await expect(save).toBeDisabled();
   await page.getByRole('form', { name: 'Register someone' }).getByRole('button', { name: 'Findable', exact: true }).click();
   await save.click();
-  await expect(page.getByText('Saved. Ben is registered.')).toBeVisible();
+  await expect(page.getByText('Saved. Zebulon is registered.')).toBeVisible();
   await expect(page.getByLabel('Name they go by')).toHaveValue('');
 
   // The code is remembered on this device.
