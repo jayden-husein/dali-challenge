@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import './styles.css';
 
 const AGE_RANGES = ['0-4', '5-12', '13-17', '18-64', '65+'];
+const SCREENS = [['search', 'Find someone'], ['check', 'Check request'], ['volunteer', 'Volunteer']];
+const TABS = [['register', 'Register'], ['requests', 'Requests'], ['roster', 'Roster']];
+// Requests arrive without any Volunteer action, so the count is polled.
+const PENDING_POLL_MS = 30_000;
 
 function App() {
   const [code, setCode] = useState(() => localStorage.getItem('shelterCode'));
   const [shelter, setShelter] = useState(null);
   const [notice, setNotice] = useState(null);
   const [screen, setScreen] = useState(code ? 'volunteer' : 'search');
+  const [tab, setTab] = useState('register');
+  const [pending, setPending] = useState(null);
   // Bumped after any Volunteer change, so every Volunteer list reloads.
   const [reloadKey, setReloadKey] = useState(0);
   const reload = () => setReloadKey((n) => n + 1);
@@ -23,6 +30,18 @@ function App() {
       .catch(() => setShelter("couldn't connect"));
   }, [code]);
 
+  useEffect(() => {
+    if (!code || screen !== 'volunteer') return;
+    const load = () =>
+      shelterFetch(code, rejected, '/api/pending-requests')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((list) => list && setPending(list.length))
+        .catch(() => {});
+    load();
+    const id = setInterval(load, PENDING_POLL_MS);
+    return () => clearInterval(id);
+  }, [code, screen, reloadKey]);
+
   function remember(newCode, name) {
     localStorage.setItem('shelterCode', newCode);
     setCode(newCode);
@@ -34,6 +53,8 @@ function App() {
     localStorage.removeItem('shelterCode');
     setCode(null);
     setShelter(null);
+    setPending(null);
+    setTab('register');
   }
 
   function rejected() {
@@ -42,34 +63,63 @@ function App() {
   }
 
   return (
-    <main>
-      <h1>Family Reunification</h1>
-      <nav>
-        <button type="button" aria-pressed={screen === 'search'} onClick={() => setScreen('search')}>Find someone</button>
-        <button type="button" aria-pressed={screen === 'check'} onClick={() => setScreen('check')}>Check request</button>
-        <button type="button" aria-pressed={screen === 'volunteer'} onClick={() => setScreen('volunteer')}>Volunteer</button>
-      </nav>
-      {screen === 'search' ? (
-        <SearchForm />
-      ) : screen === 'check' ? (
-        <CheckRequestForm />
-      ) : !code ? (
-        <>
-          {notice && <p role="alert">{notice}</p>}
-          <ShelterCodeForm onSet={remember} />
-        </>
-      ) : (
-        <>
-          <p>
-            Shelter: {shelter ?? '…'}{' '}
-            <button type="button" onClick={forget}>Switch shelter</button>
-          </p>
-          <RegisterForm code={code} onRejected={rejected} onSaved={reload} />
-          <PendingRequests code={code} onRejected={rejected} reloadKey={reloadKey} />
-          <Roster code={code} onRejected={rejected} reloadKey={reloadKey} onChanged={reload} />
-        </>
-      )}
-    </main>
+    <>
+      <header className="band">
+        <div className="wrap">
+          <h1>Family Reunification</h1>
+          <nav>
+            {SCREENS.map(([key, label]) => (
+              <button key={key} type="button" aria-pressed={screen === key} onClick={() => setScreen(key)}>
+                {label}
+              </button>
+            ))}
+          </nav>
+        </div>
+      </header>
+      <main className="wrap page">
+        {screen === 'search' ? (
+          <SearchForm />
+        ) : screen === 'check' ? (
+          <CheckRequestForm />
+        ) : !code ? (
+          <>
+            {notice && <p role="alert">{notice}</p>}
+            <ShelterCodeForm onSet={remember} />
+          </>
+        ) : (
+          <>
+            <p className="shelter-bar">
+              <span>Shelter: {shelter ?? '…'}</span>
+              <button type="button" onClick={forget}>Switch shelter</button>
+            </p>
+            <div className="tabs">
+              {TABS.map(([key, label]) => {
+                const count = key === 'requests' && pending > 0 ? pending : null;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={tab === key}
+                    aria-label={count ? `${label} (${count})` : undefined}
+                    onClick={() => setTab(key)}
+                  >
+                    {label}
+                    {count && <span className="count">{count}</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {tab === 'register' ? (
+              <RegisterForm code={code} onRejected={rejected} onSaved={reload} />
+            ) : tab === 'requests' ? (
+              <PendingRequests code={code} onRejected={rejected} reloadKey={reloadKey} onLoaded={setPending} />
+            ) : (
+              <Roster code={code} onRejected={rejected} reloadKey={reloadKey} onChanged={reload} />
+            )}
+          </>
+        )}
+      </main>
+    </>
   );
 }
 
@@ -214,7 +264,7 @@ function RegisterForm({ code, onRejected, onSaved }) {
   );
 }
 
-function PendingRequests({ code, onRejected, reloadKey }) {
+function PendingRequests({ code, onRejected, reloadKey, onLoaded }) {
   const [requests, setRequests] = useState(null);
   const [error, setError] = useState(null);
 
@@ -224,7 +274,9 @@ function PendingRequests({ code, onRejected, reloadKey }) {
       const res = await shelterFetch(code, onRejected, '/api/pending-requests');
       if (res.status === 401) return;
       if (!res.ok) throw new Error();
-      setRequests(await res.json());
+      const list = await res.json();
+      setRequests(list);
+      onLoaded(list.length);
     } catch {
       setError("Couldn't load requests. Try again.");
     }
