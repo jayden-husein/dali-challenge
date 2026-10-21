@@ -23,7 +23,7 @@ test("the roster lists only this shelter's Registrants", async ({ request }) => 
   expect(ids).toContain(id);
   expect(ids).not.toContain(elsewhere);
   expect((await roster(request)).find((r) => r.id === id)).toEqual({
-    id, known_as: 'Aurelio', age_range: '18-64', description: 'Grey beard', visibility: 'not_findable',
+    id, known_as: 'Aurelio', age_range: '18-64', description: 'Grey beard', visibility: 'not_findable', departed: false,
   });
   expect((await request.get('/api/registrants')).status()).toBe(401);
 });
@@ -71,21 +71,24 @@ const pendingIds = async (request, registrant_id) =>
 
 const status = async (request, code) => (await request.get(`/api/requests/${code}`)).json();
 
-test('a Departed Registrant leaves search, the roster, and the pending list', async ({ request }) => {
+test('a Departed Registrant leaves search and the pending list, and comes back if they return', async ({ request }) => {
   const id = await register(request, { known_as: 'Leocadia', visibility: 'findable' });
   const code = await sendRequest(request, id);
   expect(await pendingIds(request, id)).toHaveLength(1);
 
   expect((await change(request, id, { departed: true })).status()).toBe(204);
   expect(await searchIds(request, 'Leocadia')).not.toContain(id);
-  expect((await roster(request)).map((r) => r.id)).not.toContain(id);
+  expect((await roster(request)).find((r) => r.id === id).departed).toBe(true);
   expect(await pendingIds(request, id)).toEqual([]);
   expect(await status(request, code)).toEqual({ status: 'passed_on' });
 
   // A request sent after they left looks the same and never reaches a Volunteer.
   expect(await status(request, await sendRequest(request, id))).toEqual({ status: 'passed_on' });
   expect(await pendingIds(request, id)).toEqual([]);
-  expect((await change(request, id, { visibility: 'findable' })).status()).toBe(404);
+
+  expect((await change(request, id, { departed: false })).status()).toBe(204);
+  expect(await searchIds(request, 'Leocadia')).toContain(id);
+  expect(await pendingIds(request, id)).toHaveLength(2);
 });
 
 test('requests to a Registrant switched to Not findable read "passed on" and leave the pending list', async ({ request }) => {
@@ -97,7 +100,7 @@ test('requests to a Registrant switched to Not findable read "passed on" and lea
   expect(await status(request, code)).toEqual({ status: 'passed_on' });
 });
 
-test('Volunteer registers someone, hides them, then marks them Departed', async ({ page, request }) => {
+test('Volunteer registers someone, hides them, marks them Departed, and back again', async ({ page, request }) => {
   await page.goto('/');
   await page.evaluate(() => localStorage.setItem('shelterCode', 'TEST-0000'));
   await page.reload();
@@ -121,7 +124,13 @@ test('Volunteer registers someone, hides them, then marks them Departed', async 
 
   page.once('dialog', (dialog) => dialog.accept());
   await item.getByRole('button', { name: 'Departed' }).click();
-  await expect(item).toHaveCount(0);
+  await expect(item).toContainText('Departed');
+  await expect(item.getByRole('button', { name: 'Findable', exact: true })).toHaveCount(0);
   await expect(pending.getByRole('listitem').filter({ hasText: 'Peregrine' })).toHaveCount(0);
   expect(await searchIds(request, 'Peregrine')).not.toContain(id);
+
+  await item.getByRole('button', { name: 'Back at this shelter' }).click();
+  await expect(item.getByRole('button', { name: 'Findable', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(pending.getByRole('listitem').filter({ hasText: 'Peregrine' })).toHaveCount(1);
+  expect(await searchIds(request, 'Peregrine')).toContain(id);
 });

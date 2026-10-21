@@ -301,8 +301,7 @@ function Roster({ code, onRejected, reloadKey, onChanged }) {
     try {
       const res = await shelterFetch(code, onRejected, `/api/registrants/${r.id}`, body);
       if (res.status === 401) return;
-      // 404: marked Departed elsewhere, so the reload drops them.
-      if (!res.ok && res.status !== 404) throw new Error();
+      if (!res.ok) throw new Error();
       onChanged();
     } catch {
       setError(`Couldn't save the change for ${r.known_as}. Try again.`);
@@ -310,7 +309,7 @@ function Roster({ code, onRejected, reloadKey, onChanged }) {
   }
 
   function depart(r) {
-    if (confirm(`Mark ${r.known_as} as Departed? They will leave the roster and can't be found.`)) change(r, { departed: true });
+    if (confirm(`Mark ${r.known_as} as Departed? They can't be found until they're back.`)) change(r, { departed: true });
   }
 
   return (
@@ -326,13 +325,22 @@ function Roster({ code, onRejected, reloadKey, onChanged }) {
               <strong>{r.known_as}</strong>
               {r.age_range && ` (${r.age_range})`}
               {r.description && ` · ${r.description}`}
-              <ButtonGroup
-                legend={`Can people searching find ${r.known_as}?`}
-                options={VISIBILITIES}
-                value={r.visibility}
-                onChange={(visibility) => change(r, { visibility })}
-              />
-              <button type="button" onClick={() => depart(r)}>Mark Departed</button>
+              {r.departed ? (
+                <p>
+                  Departed{' '}
+                  <button type="button" onClick={() => change(r, { departed: false })}>Back at this shelter</button>
+                </p>
+              ) : (
+                <>
+                  <ButtonGroup
+                    legend={`Can people searching find ${r.known_as}?`}
+                    options={VISIBILITIES}
+                    value={r.visibility}
+                    onChange={(visibility) => change(r, { visibility })}
+                  />
+                  <button type="button" onClick={() => depart(r)}>Mark Departed</button>
+                </>
+              )}
             </li>
           ))}
         </ul>

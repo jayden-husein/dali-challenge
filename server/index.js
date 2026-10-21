@@ -57,26 +57,26 @@ app.post('/api/registrants', requireShelter, express.json(), async (req, res) =>
   res.status(201).json({ ...rows[0], shelter: req.shelter.name });
 });
 
-// Shelter roster: everyone still at this shelter. Departed Registrants have left.
+// Shelter roster: everyone registered here, Departed last, in case they come back.
 app.get('/api/registrants', requireShelter, async (req, res) => {
   const { rows } = await pool.query(
-    `SELECT id, known_as, age_range, description, visibility FROM registrants
-     WHERE shelter_id = $1 AND NOT departed ORDER BY known_as`,
+    `SELECT id, known_as, age_range, description, visibility, departed FROM registrants
+     WHERE shelter_id = $1 ORDER BY departed, known_as`,
     [req.shelter.id],
   );
   res.json(rows);
 });
 
-// Body is {visibility} or {departed: true}. Departed is final: they're off the roster.
+// Body is {visibility} or {departed}. Departed is undone if they come back.
 app.post('/api/registrants/:id', requireShelter, express.json(), async (req, res) => {
   const { visibility, departed } = req.body ?? {};
-  if (departed !== true && !VISIBILITIES.includes(visibility)) {
+  if (typeof departed !== 'boolean' && !VISIBILITIES.includes(visibility)) {
     return res.status(400).json({ error: 'Choose Findable, Not findable, or Departed.' });
   }
-  const [column, value] = departed === true ? ['departed', true] : ['visibility', visibility];
+  const [column, value] = typeof departed === 'boolean' ? ['departed', departed] : ['visibility', visibility];
   const { rowCount } = UUID.test(req.params.id)
     ? await pool.query(
-      `UPDATE registrants SET ${column} = $3 WHERE shelter_id = $1 AND id = $2 AND NOT departed`,
+      `UPDATE registrants SET ${column} = $3 WHERE shelter_id = $1 AND id = $2`,
       [req.shelter.id, req.params.id, value],
     )
     : { rowCount: 0 };
