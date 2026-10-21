@@ -10,7 +10,7 @@ Judgement calls for review. Mechanical versions of the privacy rules are enforce
 
 ## Shelter scoping
 
-- Every Volunteer route scopes its reads and writes to the Shelter Code's shelter. Another shelter's Registrant or request is treated as not found.
+- Every Volunteer route scopes its reads and writes to the Shelter Code's shelter. Another shelter's Registrant or request is treated as not found. The one exception is the duplicate check on Register, which also shows other shelters' Findable, non-Departed Registrants (ADR 0001).
 
 ## Language
 
