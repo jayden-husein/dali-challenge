@@ -69,6 +69,12 @@ test('Volunteer sees possible existing records before saving, and can save anywa
   await expect(matches).toContainText('Anastasius (0-4) · Yellow boots');
   await expect(page.getByText('Saved.')).toHaveCount(0);
 
+  // Don't save keeps what was typed, so the Volunteer can fix it or check again.
+  await form.getByRole('button', { name: "Don't save" }).click();
+  await expect(matches).toHaveCount(0);
+  await expect(page.getByLabel('Name they go by')).toHaveValue('Anastasius');
+  await form.getByRole('button', { name: 'Save', exact: true }).click();
+
   await form.getByRole('button', { name: 'Save anyway' }).click();
   await expect(page.getByText('Saved. Anastasius is registered.')).toBeVisible();
   await expect(matches).toHaveCount(0);

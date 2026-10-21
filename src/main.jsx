@@ -163,11 +163,6 @@ function RegisterForm({ code, onRejected, onSaved }) {
     }
   }
 
-  function discard() {
-    setRegistrant(EMPTY_REGISTRANT);
-    setMatches(null);
-  }
-
   return (
     <form onSubmit={(e) => { e.preventDefault(); save(true); }} aria-labelledby="register-heading">
       <h2 id="register-heading">Register someone</h2>
@@ -209,7 +204,7 @@ function RegisterForm({ code, onRejected, onSaved }) {
             ))}
           </ul>
           <button type="button" onClick={() => save(false)}>Save anyway</button>{' '}
-          <button type="button" onClick={discard}>Don't save</button>
+          <button type="button" onClick={() => setMatches(null)}>Don't save</button>
         </section>
       ) : (
         <button disabled={!registrant.visibility || !registrant.known_as.trim()}>Save</button>

@@ -11,3 +11,5 @@ Some people in this disaster don't want to be found (someone who fled an abusive
 ## Consequences
 
 Honest Seekers get less closure: a "passed on" request might mean a wrong match, a refusal, or a person nobody could locate. The status page and the empty-search message tell them to keep searching instead.
+
+The duplicate check on Register is the one Volunteer view that reaches past its own shelter. It shows other shelters' Findable, non-Departed Registrants, whom anyone can already find by searching, plus everyone at the Volunteer's own shelter. Another shelter's Not findable or Departed Registrants never appear, so a Shelter Code reveals no more about other shelters than search does.
