@@ -1,6 +1,6 @@
 # DALI Challenge 26F
 
-This a full-stack application meant for seekers to help find their loved ones and for volunteers to register people at the shelters during disaster relief.
+This is a full-stack application meant for seekers to help find their loved ones and for volunteers to register people at the shelters during disaster relief.
 
 **Live:** https://dali-challenge-ld9u.onrender.com/
 
@@ -8,9 +8,9 @@ This a full-stack application meant for seekers to help find their loved ones an
 
 The challenge was to "build an app that helps separated family members find each other." There were a few constraints when I was designing and trying to come up with its idea.
 
-The biggest issue was regarding privacy. Some people may not want to be found which was discussed in the prompt. There were also some other constraints such as high-traffic (added rate limiting) and the need for a simple/lightweight UI. Connection might be poor and also technological literacy varies a lot.
+The biggest issue was regarding privacy. Some people may not want to be found, which was discussed in the prompt. There were also some other constraints, such as high-traffic (added rate limiting) and the need for a simple/lightweight UI. Connection might be poor, and also technological literacy varies a lot.
 
-I also added fuzzy search as names are always a little finicky. People may misspell names, misspronounce them, etc.
+I also added fuzzy search as names are always a little finicky. People may misspell names, mispronounce them, etc.
 
 ## How it works
 
@@ -25,7 +25,7 @@ I also added fuzzy search as names are always a little finicky. People may missp
 
 - See docs/adr/0001-seekers-learn-nothing-without-consent.md
 - Options you rejected: three Visibility levels, telling the Seeker "not the person", a "not registered" message on empty search
-  - Tradeoff here is that seekers may get less closure since they won't know if they were logged or might have died. However, I thought it was worth it as if the seeker is an abuser, then they would know the registrant is alive and might keep searching for them.
+  - Tradeoff here is that seekers may get less closure since they won't know if they were logged or might have died. However, I thought it was worth it, as if the seeker is an abuser, then they would know the registrant is alive and might keep searching for them.
 
 ## Tech stack
 
@@ -36,8 +36,8 @@ I also added fuzzy search as names are always a little finicky. People may missp
 
 ## How I built it / AI use
 
-- I used Claude Code with Matt Pocock’s skills: setup, ask-matt, grill-with-docs, to-spec, to-tickets, implement, tdd, code-review, retro and prototype. I also used /frontend-design by Anthropic for design guidelines and /teach, to build my understand as I worked through it.
-- All decisions were made by me. I came up with the initial draft, features, techstack, etc. Claude then asked me questions and refined them, which I accepted, changed, or rejected.
+- I used Claude Code with Matt Pocock’s skills: setup, ask-matt, grill-with-docs, to-spec, to-tickets, implement, tdd, code-review, retro, and prototype. I also used /frontend-design by Anthropic for design guidelines and /teach to build my understanding as I worked through it.
+- All decisions were made by me. I came up with the initial draft, features, tech stack, etc. Claude then asked me questions and refined them, which I accepted, changed, or rejected.
 
 ## Potential future features
 
