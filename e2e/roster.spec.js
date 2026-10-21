@@ -108,6 +108,7 @@ test('Volunteer registers someone, hides them, marks them Departed, and back aga
   await page.getByRole('form', { name: 'Register someone' }).getByRole('button', { name: 'Not findable' }).click();
   await page.getByRole('button', { name: 'Save' }).click();
 
+  await page.getByRole('button', { name: 'Roster' }).click();
   const section = page.getByRole('region', { name: 'Shelter roster' });
   const item = section.getByRole('listitem').filter({ hasText: 'Peregrine' });
   await expect(item.getByRole('button', { name: 'Not findable' })).toHaveAttribute('aria-pressed', 'true');
@@ -118,19 +119,24 @@ test('Volunteer registers someone, hides them, marks them Departed, and back aga
   expect(await searchIds(request, 'Peregrine')).toContain(id);
 
   await sendRequest(request, id);
+  await page.getByRole('button', { name: 'Requests' }).click();
   const pending = page.getByRole('region', { name: 'Pending requests' });
   await pending.getByRole('button', { name: 'Refresh' }).click();
   await expect(pending.getByRole('listitem').filter({ hasText: 'Peregrine' })).toHaveCount(1);
 
+  await page.getByRole('button', { name: 'Roster' }).click();
   page.once('dialog', (dialog) => dialog.accept());
   await item.getByRole('button', { name: 'Departed' }).click();
   await expect(item).toContainText('Departed');
   await expect(item.getByRole('button', { name: 'Findable', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Requests' }).click();
   await expect(pending.getByRole('listitem').filter({ hasText: 'Peregrine' })).toHaveCount(0);
   expect(await searchIds(request, 'Peregrine')).not.toContain(id);
 
+  await page.getByRole('button', { name: 'Roster' }).click();
   await item.getByRole('button', { name: 'Back at this shelter' }).click();
   await expect(item.getByRole('button', { name: 'Findable', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Requests' }).click();
   await expect(pending.getByRole('listitem').filter({ hasText: 'Peregrine' })).toHaveCount(1);
   expect(await searchIds(request, 'Peregrine')).toContain(id);
 });

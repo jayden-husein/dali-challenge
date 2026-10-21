@@ -1,0 +1,72 @@
+/* Calm public-service look: a harbour-blue header band, plain white page, yellow focus.
+   Colours are variables so a dark mode is cheap to add later. */
+:root {
+  --ink: #1c2a36;
+  --harbour: #1f4e74;
+  --mist: #eef2f5;
+  --rule: #d3dbe2;
+  --signal: #f2b33d;
+  --alarm: #b3261e;
+  --ok: #22663a;
+  --radius: 6px;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: #fff; color: var(--ink); font: 18px/1.5 system-ui, sans-serif; }
+input, textarea, button { font: inherit; color: inherit; }
+:focus-visible { outline: 4px solid var(--signal); outline-offset: 0; box-shadow: inset 0 0 0 2px var(--ink); }
+
+.wrap { max-width: 46rem; margin: 0 auto; padding-left: 1rem; padding-right: 1rem; }
+
+/* Header band, with the screen tabs attached to the page below */
+.band { background: var(--harbour); color: #fff; }
+.band .wrap { padding-top: 1.1rem; }
+h1 { margin: 0 0 0.9rem; font-size: 1.35rem; font-weight: 700; letter-spacing: -0.01em; }
+.band nav { display: flex; gap: 0.25rem; }
+.band nav button { flex: none; padding: 0.7rem 1rem; border: 0; border-radius: 8px 8px 0 0; background: transparent; color: #fff; font-weight: 600; cursor: pointer; }
+.band nav button:hover { text-decoration: underline; }
+.band nav button[aria-pressed='true'] { background: #fff; color: var(--harbour); text-decoration: none; }
+
+.page { padding-top: 1.75rem; padding-bottom: 6rem; }
+h2 { margin: 0 0 1rem; font-size: 1.9rem; line-height: 1.15; letter-spacing: -0.015em; }
+h3 { margin: 0 0 0.5rem; font-size: 1.25rem; }
+
+/* Forms */
+label { display: block; margin: 1.4rem 0; font-weight: 600; }
+input, textarea { display: block; width: 100%; margin-top: 0.35rem; padding: 0.6rem 0.7rem; border: 2px solid var(--ink); border-radius: var(--radius); background: #fff; font-weight: 400; }
+textarea { min-height: 5.5rem; }
+fieldset { margin: 1.4rem 0; padding: 0; border: 0; }
+legend { padding: 0; margin-bottom: 0.4rem; font-weight: 600; }
+
+main button { min-height: 48px; padding: 0.55rem 1.1rem; border: 2px solid var(--ink); border-radius: var(--radius); background: #fff; cursor: pointer; }
+fieldset button { min-width: 4.75rem; margin: 0 0.45rem 0.45rem 0; }
+main button[aria-pressed='true'] { background: var(--ink); color: #fff; }
+/* Submit buttons are the main action on each form */
+main button:not([type]) { background: var(--harbour); border-color: var(--harbour); color: #fff; font-weight: 700; box-shadow: 0 3px 0 #0e2b42; }
+main button:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+/* Lists */
+ul { margin: 1.25rem 0; padding: 0; list-style: none; }
+li { padding: 1.1rem 0; border-top: 2px solid var(--rule); }
+li p { margin: 0.25rem 0; }
+li > p:first-child strong, li > strong { font-size: 1.15rem; }
+blockquote { margin: 0.6rem 0; padding: 0.15rem 0 0.15rem 1rem; border-left: 5px solid var(--rule); }
+
+/* Messages */
+[role='alert'] { padding: 0.6rem 1rem; border-left: 6px solid var(--alarm); border-radius: var(--radius); background: #fbeceb; color: #7a1712; font-weight: 600; }
+[role='status'] { padding: 0.6rem 1rem; border-left: 6px solid var(--ok); border-radius: var(--radius); background: #ecf5ef; }
+.request-code { display: inline-block; margin: 0.25rem 0; padding: 0.2rem 0.8rem; border-radius: 8px; background: var(--signal); font-size: 2.4rem; font-weight: 800; letter-spacing: 0.06em; }
+
+/* Volunteer screen: shelter bar, then Register / Requests / Roster tabs */
+.shelter-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; margin: -1.75rem -1rem 1.5rem; padding: 0.6rem 1rem; border-radius: 0 0 8px 8px; background: var(--mist); }
+.shelter-bar button { min-height: 40px; padding: 0.3rem 0.8rem; font-size: 0.9em; }
+.tabs { display: flex; gap: 1.75rem; margin-bottom: 1.75rem; border-bottom: 2px solid var(--rule); }
+.tabs button { min-height: 0; padding: 0.7rem 0; margin-bottom: -2px; border: 0; border-bottom: 5px solid transparent; border-radius: 0; background: none; font-weight: 600; }
+.tabs button[aria-pressed='true'] { background: none; color: var(--harbour); border-bottom-color: var(--harbour); }
+.count { display: inline-block; min-width: 1.5em; margin-left: 0.4rem; padding: 0 0.45em; border-radius: 1em; background: var(--alarm); color: #fff; font-size: 0.8em; line-height: 1.5; text-align: center; }
+
+@media (max-width: 600px) {
+  .band nav { gap: 0; }
+  .band nav button { flex: 1; padding: 0.6rem 0.25rem; font-size: 0.9rem; line-height: 1.2; }
+  .tabs { gap: 1.25rem; }
+}

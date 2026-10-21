@@ -183,6 +183,7 @@ test('Volunteer answers Yes and the Seeker sees the reply', async ({ page, reque
   await page.goto('/');
   await page.evaluate(() => localStorage.setItem('shelterCode', 'TEST-0000'));
   await page.reload();
+  await page.getByRole('button', { name: 'Requests' }).click();
   const item = page.getByRole('region', { name: 'Pending requests' }).getByRole('listitem').filter({ hasText: 'Evangelina' });
   await expect(item).toContainText('Green coat');
   await expect(item).toContainText('Marta (Brother)');
@@ -203,4 +204,27 @@ test('Volunteer answers Yes and the Seeker sees the reply', async ({ page, reque
   await expect(page.getByText('They replied:')).toBeVisible();
   await expect(page.getByText('I am safe, come find me')).toBeVisible();
   await expect(page.getByText('Front door at noon')).toBeVisible();
+});
+
+test('the Requests tab shows the pending count and keeps it up to date', async ({ page, request }) => {
+  // Quiet Shelter, so requests from other test files don't change the count.
+  const headers = { 'X-Shelter-Code': 'TEST-0001' };
+  const res = await request.post('/api/registrants', { headers, data: { known_as: 'Octavian', visibility: 'findable' } });
+  const registrant_id = (await res.json()).id;
+
+  await page.clock.install();
+  await page.goto('/');
+  await page.evaluate(() => localStorage.setItem('shelterCode', 'TEST-0001'));
+  await page.reload();
+  await expect(page.getByText('Shelter: Quiet Shelter')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Requests', exact: true })).toBeVisible();
+
+  // A request arrives while the Volunteer is on Register: the count shows within 30 seconds.
+  await sendRequest(request, registrant_id);
+  await page.clock.runFor(30_000);
+  await expect(page.getByRole('button', { name: 'Requests (1)' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Requests (1)' }).click();
+  await page.getByRole('listitem').filter({ hasText: 'Octavian' }).getByRole('button', { name: "No / don't know them" }).click();
+  await expect(page.getByRole('button', { name: 'Requests', exact: true })).toBeVisible();
 });
