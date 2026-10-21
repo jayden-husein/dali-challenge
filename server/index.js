@@ -122,11 +122,59 @@ app.post('/api/requests', requestLimit, express.json(), async (req, res) => {
   }
 });
 
-// Open route. Only "passed on" until Volunteers can answer; never anything about the Registrant.
+// Requests a Volunteer can see and answer: still pending, for a Findable,
+// non-Departed Registrant at their own shelter ($1).
+const ANSWERABLE = `cr.status = 'pending' AND r.shelter_id = $1 AND r.visibility = 'findable' AND NOT r.departed`;
+
+app.get('/api/pending-requests', requireShelter, async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT cr.id, cr.registrant_id, r.known_as, r.age_range, r.description,
+            cr.seeker_name, cr.relationship, cr.message, cr.seeker_contact, cr.attempts
+     FROM contact_requests cr JOIN registrants r ON r.id = cr.registrant_id
+     WHERE ${ANSWERABLE}
+     ORDER BY cr.created_at`,
+    [req.shelter.id],
+  );
+  res.json(rows);
+});
+
+const ANSWERS = ['yes', 'no', 'not_found'];
+
+app.post('/api/pending-requests/:id', requireShelter, express.json(), async (req, res) => {
+  const { answer } = req.body ?? {};
+  if (!ANSWERS.includes(answer)) return res.status(400).json({ error: 'Unknown answer.' });
+  const reply_message = answer === 'yes' ? optionalText(req.body.reply_message) : null;
+  const reply_contact = answer === 'yes' ? optionalText(req.body.reply_contact) : null;
+  if (answer === 'yes' && !reply_message) {
+    return res.status(400).json({ error: 'Write their message to the person looking for them.' });
+  }
+  // "Couldn't find them" stays pending with one more try; yes and no close it.
+  let set = 'attempts = attempts + 1';
+  let values = [];
+  if (answer !== 'not_found') {
+    set = 'status = $3, reply_message = $4, reply_contact = $5, answered_at = now()';
+    values = [answer, reply_message, reply_contact];
+  }
+  const { rowCount } = UUID.test(req.params.id)
+    ? await pool.query(
+      `UPDATE contact_requests cr SET ${set}
+       FROM registrants r WHERE r.id = cr.registrant_id AND cr.id = $2 AND ${ANSWERABLE}`,
+      [req.shelter.id, req.params.id, ...values],
+    )
+    : { rowCount: 0 };
+  if (!rowCount) return res.status(404).json({ error: 'Not found.' });
+  res.status(204).end();
+});
+
+// Open route (ADR 0001). A yes shows only the Registrant's reply; every other outcome is "passed on".
 app.get('/api/requests/:code', checkLimit, async (req, res) => {
-  const { rows } = await pool.query('SELECT 1 FROM contact_requests WHERE request_code = $1', [req.params.code.trim().toUpperCase()]);
+  const { rows } = await pool.query(
+    'SELECT status, reply_message, reply_contact FROM contact_requests WHERE request_code = $1',
+    [req.params.code.trim().toUpperCase()],
+  );
   if (!rows[0]) return res.status(404).json({ error: 'No request with that code. Check it and try again.' });
-  res.json({ status: 'passed_on' });
+  const { status, reply_message, reply_contact } = rows[0];
+  res.json(status === 'yes' ? { status, reply_message, reply_contact } : { status: 'passed_on' });
 });
 
 app.use(express.static(path.join(__dirname, '..', 'dist')));

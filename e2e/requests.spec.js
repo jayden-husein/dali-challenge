@@ -8,8 +8,11 @@ async function register(request, registrant) {
   return (await res.json()).id;
 }
 
-async function sendRequest(request, registrant_id) {
-  const res = await request.post('/api/requests', { data: { registrant_id, seeker_name: 'Marta' } });
+// Each request comes from its own IP, so the per-IP limit doesn't cut the file short.
+let ip = 0;
+async function sendRequest(request, registrant_id, fields = {}) {
+  const headers = { 'X-Forwarded-For': `198.51.100.${++ip}` };
+  const res = await request.post('/api/requests', { headers, data: { registrant_id, seeker_name: 'Marta', ...fields } });
   expect(res.status()).toBe(201);
   return (await res.json()).request_code;
 }
@@ -86,4 +89,118 @@ test('Seeker searches, sends a Contact Request, and checks its Request Code', as
   await page.getByLabel('Request Code').fill('NOPE-NOPE-0000');
   await page.getByRole('button', { name: 'Check', exact: true }).click();
   await expect(page.getByText('No request with that code. Check it and try again.')).toBeVisible();
+});
+
+const otherShelterHeaders = { 'X-Shelter-Code': 'HERON-4821' };
+
+async function pendingFor(request, registrant_id, headers = volunteerHeaders) {
+  const res = await request.get('/api/pending-requests', { headers });
+  expect(res.status()).toBe(200);
+  return (await res.json()).filter((r) => r.registrant_id === registrant_id);
+}
+
+test("a Volunteer sees pending requests for their own shelter's Findable Registrants only", async ({ request }) => {
+  const registrant_id = await register(request, { known_as: 'Leopoldine', age_range: '65+', description: 'Blue cane', visibility: 'findable' });
+  await sendRequest(request, registrant_id, { relationship: 'Daughter', message: 'We are safe', seeker_contact: '555-0101' });
+  const hidden = await register(request, { known_as: 'Ottoline', visibility: 'not_findable' });
+  await sendRequest(request, hidden);
+
+  const [pending] = await pendingFor(request, registrant_id);
+  expect(pending).toEqual({
+    id: expect.any(String),
+    registrant_id,
+    known_as: 'Leopoldine',
+    age_range: '65+',
+    description: 'Blue cane',
+    seeker_name: 'Marta',
+    relationship: 'Daughter',
+    message: 'We are safe',
+    seeker_contact: '555-0101',
+    attempts: 0,
+  });
+  expect(await pendingFor(request, hidden)).toEqual([]);
+  expect(await pendingFor(request, registrant_id, otherShelterHeaders)).toEqual([]);
+  expect((await request.get('/api/pending-requests')).status()).toBe(401);
+});
+
+const answer = (request, id, data, headers = volunteerHeaders) => request.post(`/api/pending-requests/${id}`, { headers, data });
+
+test("\"Couldn't find them\" keeps the request pending and counts the try", async ({ request }) => {
+  const registrant_id = await register(request, { known_as: 'Gwendolyn', visibility: 'findable' });
+  const code = await sendRequest(request, registrant_id);
+  const [{ id }] = await pendingFor(request, registrant_id);
+
+  expect((await answer(request, id, { answer: 'not_found' })).status()).toBe(204);
+  expect((await answer(request, id, { answer: 'not_found' })).status()).toBe(204);
+  expect((await pendingFor(request, registrant_id))[0].attempts).toBe(2);
+  expect(await (await request.get(`/api/requests/${code}`)).json()).toEqual({ status: 'passed_on' });
+});
+
+test("a Volunteer can't answer another shelter's request", async ({ request }) => {
+  const registrant_id = await register(request, { known_as: 'Theodora', visibility: 'findable' });
+  await sendRequest(request, registrant_id);
+  const [{ id }] = await pendingFor(request, registrant_id);
+
+  expect((await answer(request, id, { answer: 'no' }, otherShelterHeaders)).status()).toBe(404);
+  expect((await answer(request, 'not-a-uuid', { answer: 'no' })).status()).toBe(404);
+  expect(await pendingFor(request, registrant_id)).toHaveLength(1);
+});
+
+test('a "No" request looks the same to the Seeker as a pending one, and leaves the list', async ({ request }) => {
+  const registrant_id = await register(request, { known_as: 'Wilhelmina', visibility: 'findable' });
+  const pendingCode = await sendRequest(request, registrant_id);
+  const noCode = await sendRequest(request, registrant_id);
+  const noId = (await pendingFor(request, registrant_id))[1].id;
+
+  expect((await answer(request, noId, { answer: 'no' })).status()).toBe(204);
+  expect((await pendingFor(request, registrant_id)).map((r) => r.id)).not.toContain(noId);
+  const pending = await request.get(`/api/requests/${pendingCode}`);
+  const no = await request.get(`/api/requests/${noCode}`);
+  expect(no.status()).toBe(pending.status());
+  expect(await no.json()).toEqual(await pending.json());
+  expect((await answer(request, noId, { answer: 'no' })).status()).toBe(404);
+});
+
+test('a "Yes" shows the Seeker only the Registrant\'s reply', async ({ request }) => {
+  const registrant_id = await register(request, { known_as: 'Bartholomew', description: 'Red hat', visibility: 'findable' });
+  const code = await sendRequest(request, registrant_id);
+  const [{ id }] = await pendingFor(request, registrant_id);
+
+  expect((await answer(request, id, { answer: 'yes', reply_message: '  ' })).status()).toBe(400);
+  expect((await answer(request, id, { answer: 'yes', reply_message: 'Come to the gym door', reply_contact: '555-0199' })).status()).toBe(204);
+  expect(await pendingFor(request, registrant_id)).toEqual([]);
+  expect(await (await request.get(`/api/requests/${code}`)).json()).toEqual({
+    status: 'yes',
+    reply_message: 'Come to the gym door',
+    reply_contact: '555-0199',
+  });
+});
+
+test('Volunteer answers Yes and the Seeker sees the reply', async ({ page, request }) => {
+  const registrant_id = await register(request, { known_as: 'Evangelina', description: 'Green coat', visibility: 'findable' });
+  const code = await sendRequest(request, registrant_id, { relationship: 'Brother', message: 'Are you okay?' });
+
+  await page.goto('/');
+  await page.evaluate(() => localStorage.setItem('shelterCode', 'TEST-0000'));
+  await page.reload();
+  const item = page.getByRole('listitem').filter({ hasText: 'Evangelina' });
+  await expect(item).toContainText('Green coat');
+  await expect(item).toContainText('Marta (Brother)');
+  await expect(item).toContainText('Are you okay?');
+
+  await item.getByRole('button', { name: "Couldn't find them" }).click();
+  await expect(item).toContainText('Tried 1 time');
+
+  await item.getByRole('button', { name: 'Yes' }).click();
+  await item.getByLabel('Their message').fill('I am safe, come find me');
+  await item.getByLabel('Contact or meeting place (optional)').fill('Front door at noon');
+  await item.getByRole('button', { name: 'Send reply' }).click();
+  await expect(item).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Check request' }).click();
+  await page.getByLabel('Request Code').fill(code);
+  await page.getByRole('button', { name: 'Check', exact: true }).click();
+  await expect(page.getByText('They replied:')).toBeVisible();
+  await expect(page.getByText('I am safe, come find me')).toBeVisible();
+  await expect(page.getByText('Front door at noon')).toBeVisible();
 });

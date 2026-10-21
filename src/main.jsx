@@ -62,6 +62,7 @@ function App() {
             <button type="button" onClick={forget}>Switch shelter</button>
           </p>
           <RegisterForm code={code} onRejected={rejected} />
+          <PendingRequests code={code} onRejected={rejected} />
         </>
       )}
     </main>
@@ -166,6 +167,104 @@ function RegisterForm({ code, onRejected }) {
       <button disabled={!registrant.visibility || !registrant.known_as.trim()}>Save</button>
       {status && <p role={status.ok ? 'status' : 'alert'}>{status.text}</p>}
     </form>
+  );
+}
+
+function PendingRequests({ code, onRejected }) {
+  const [requests, setRequests] = useState(null);
+  const [error, setError] = useState(null);
+
+  async function load() {
+    setError(null);
+    try {
+      const res = await fetch('/api/pending-requests', { headers: { 'X-Shelter-Code': code } });
+      if (res.status === 401) return onRejected();
+      if (!res.ok) throw new Error();
+      setRequests(await res.json());
+    } catch {
+      setError("Couldn't load requests. Try again.");
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, [code]);
+
+  return (
+    <section>
+      <h2>Pending requests</h2>
+      <button type="button" onClick={load}>Refresh</button>
+      {error && <p role="alert">{error}</p>}
+      {requests?.length === 0 && <p role="status">No pending requests.</p>}
+      {requests?.length > 0 && (
+        <ul>
+          {requests.map((r) => (
+            <PendingRequest key={r.id} request={r} code={code} onRejected={onRejected} onAnswered={load} />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function PendingRequest({ request: r, code, onRejected, onAnswered }) {
+  const [replying, setReplying] = useState(false);
+  const [reply, setReply] = useState({ reply_message: '', reply_contact: '' });
+  const [error, setError] = useState(null);
+  const setField = (field) => (e) => setReply((f) => ({ ...f, [field]: e.target.value }));
+
+  async function send(body) {
+    setError(null);
+    try {
+      const res = await fetch(`/api/pending-requests/${r.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Shelter-Code': code },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 401) return onRejected();
+      if (res.status === 400) return setError((await res.json()).error);
+      // 404: already answered elsewhere, or no longer answerable, so the reload drops it.
+      if (!res.ok && res.status !== 404) throw new Error();
+      onAnswered();
+    } catch {
+      setError("Couldn't save the answer. Try again.");
+    }
+  }
+
+  return (
+    <li>
+      <p>
+        <strong>{r.known_as}</strong>
+        {r.age_range && ` (${r.age_range})`}
+        {r.description && ` · ${r.description}`}
+      </p>
+      <p>
+        From {r.seeker_name}
+        {r.relationship && ` (${r.relationship})`}
+        {r.seeker_contact && ` · ${r.seeker_contact}`}
+      </p>
+      {r.message && <blockquote>{r.message}</blockquote>}
+      {r.attempts > 0 && <p>Tried {r.attempts} {r.attempts === 1 ? 'time' : 'times'}</p>}
+      {replying ? (
+        <form onSubmit={(e) => { e.preventDefault(); send({ answer: 'yes', ...reply }); }}>
+          <label>
+            Their message <textarea value={reply.reply_message} onChange={setField('reply_message')} required />
+          </label>
+          <label>
+            Contact or meeting place (optional) <input value={reply.reply_contact} onChange={setField('reply_contact')} />
+          </label>
+          <button disabled={!reply.reply_message.trim()}>Send reply</button>
+          <button type="button" onClick={() => setReplying(false)}>Cancel</button>
+        </form>
+      ) : (
+        <p>
+          <button type="button" onClick={() => setReplying(true)}>Yes</button>{' '}
+          <button type="button" onClick={() => send({ answer: 'no' })}>No / don't know them</button>{' '}
+          <button type="button" onClick={() => send({ answer: 'not_found' })}>Couldn't find them</button>
+        </p>
+      )}
+      {error && <p role="alert">{error}</p>}
+    </li>
   );
 }
 
@@ -304,7 +403,7 @@ function CheckRequestForm() {
       const res = await fetch(`/api/requests/${encodeURIComponent(requestCode.trim())}`);
       if (res.status === 404 || res.status === 429) return setResult({ ok: false, text: (await res.json()).error });
       if (!res.ok) throw new Error();
-      setResult({ ok: true });
+      setResult({ ok: true, ...(await res.json()) });
     } catch {
       setResult({ ok: false, text: "Couldn't check. Try again." });
     }
@@ -318,7 +417,14 @@ function CheckRequestForm() {
       </label>
       <button disabled={!requestCode.trim()}>Check</button>
       {result?.ok === false && <p role="alert">{result.text}</p>}
-      {result?.ok && (
+      {result?.status === 'yes' && (
+        <div role="status">
+          <p>They replied:</p>
+          <blockquote>{result.reply_message}</blockquote>
+          {result.reply_contact && <p>{result.reply_contact}</p>}
+        </div>
+      )}
+      {result?.status === 'passed_on' && (
         // Same words for every answer except a yes (ADR 0001).
         <div role="status">
           <p>Your request has been passed on.</p>
