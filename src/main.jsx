@@ -8,6 +8,9 @@ function App() {
   const [shelter, setShelter] = useState(null);
   const [notice, setNotice] = useState(null);
   const [screen, setScreen] = useState(code ? 'volunteer' : 'search');
+  // Bumped after any Volunteer change, so every Volunteer list reloads.
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = () => setReloadKey((n) => n + 1);
 
   // A remembered code is checked again, in case it was changed.
   useEffect(() => {
@@ -61,8 +64,9 @@ function App() {
             Shelter: {shelter ?? '…'}{' '}
             <button type="button" onClick={forget}>Switch shelter</button>
           </p>
-          <RegisterForm code={code} onRejected={rejected} />
-          <PendingRequests code={code} onRejected={rejected} />
+          <RegisterForm code={code} onRejected={rejected} onSaved={reload} />
+          <PendingRequests code={code} onRejected={rejected} reloadKey={reloadKey} />
+          <Roster code={code} onRejected={rejected} reloadKey={reloadKey} onChanged={reload} />
         </>
       )}
     </main>
@@ -96,6 +100,17 @@ function ShelterCodeForm({ onSet }) {
   );
 }
 
+// Volunteer calls send the Shelter Code. A 401 means it no longer works.
+async function shelterFetch(code, onRejected, url, body) {
+  const res = await fetch(url, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'Content-Type': 'application/json', 'X-Shelter-Code': code },
+    body: body && JSON.stringify(body),
+  });
+  if (res.status === 401) onRejected();
+  return res;
+}
+
 const VISIBILITIES = [['findable', 'Findable'], ['not_findable', 'Not findable']];
 const EMPTY_REGISTRANT = { known_as: '', age_range: null, description: '', visibility: null };
 
@@ -112,7 +127,7 @@ function ButtonGroup({ legend, options, value, onChange }) {
   );
 }
 
-function RegisterForm({ code, onRejected }) {
+function RegisterForm({ code, onRejected, onSaved }) {
   const [registrant, setRegistrant] = useState(EMPTY_REGISTRANT);
   const [status, setStatus] = useState(null);
   const setField = (field, value) => setRegistrant((r) => ({ ...r, [field]: value }));
@@ -121,16 +136,13 @@ function RegisterForm({ code, onRejected }) {
     e.preventDefault();
     setStatus(null);
     try {
-      const res = await fetch('/api/registrants', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Shelter-Code': code },
-        body: JSON.stringify(registrant),
-      });
-      if (res.status === 401) return onRejected();
+      const res = await shelterFetch(code, onRejected, '/api/registrants', registrant);
+      if (res.status === 401) return;
       if (res.status === 400) return setStatus({ ok: false, text: (await res.json()).error });
       if (!res.ok) throw new Error();
       setStatus({ ok: true, text: `Saved. ${registrant.known_as.trim()} is registered.` });
       setRegistrant(EMPTY_REGISTRANT);
+      onSaved();
     } catch {
       // Keep everything typed so the Volunteer can just try again.
       setStatus({ ok: false, text: "Couldn't save. Nothing was lost. Try again." });
@@ -138,8 +150,8 @@ function RegisterForm({ code, onRejected }) {
   }
 
   return (
-    <form onSubmit={submit}>
-      <h2>Register someone</h2>
+    <form onSubmit={submit} aria-labelledby="register-heading">
+      <h2 id="register-heading">Register someone</h2>
       <label>
         Name they go by{' '}
         <input value={registrant.known_as} onChange={(e) => setField('known_as', e.target.value)} required />
@@ -170,15 +182,15 @@ function RegisterForm({ code, onRejected }) {
   );
 }
 
-function PendingRequests({ code, onRejected }) {
+function PendingRequests({ code, onRejected, reloadKey }) {
   const [requests, setRequests] = useState(null);
   const [error, setError] = useState(null);
 
   async function load() {
     setError(null);
     try {
-      const res = await fetch('/api/pending-requests', { headers: { 'X-Shelter-Code': code } });
-      if (res.status === 401) return onRejected();
+      const res = await shelterFetch(code, onRejected, '/api/pending-requests');
+      if (res.status === 401) return;
       if (!res.ok) throw new Error();
       setRequests(await res.json());
     } catch {
@@ -188,11 +200,11 @@ function PendingRequests({ code, onRejected }) {
 
   useEffect(() => {
     load();
-  }, [code]);
+  }, [code, reloadKey]);
 
   return (
-    <section>
-      <h2>Pending requests</h2>
+    <section aria-labelledby="pending-heading">
+      <h2 id="pending-heading">Pending requests</h2>
       <button type="button" onClick={load}>Refresh</button>
       {error && <p role="alert">{error}</p>}
       {requests?.length === 0 && <p role="status">No pending requests.</p>}
@@ -216,12 +228,8 @@ function PendingRequest({ request: r, code, onRejected, onAnswered }) {
   async function send(body) {
     setError(null);
     try {
-      const res = await fetch(`/api/pending-requests/${r.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Shelter-Code': code },
-        body: JSON.stringify(body),
-      });
-      if (res.status === 401) return onRejected();
+      const res = await shelterFetch(code, onRejected, `/api/pending-requests/${r.id}`, body);
+      if (res.status === 401) return;
       if (res.status === 400) return setError((await res.json()).error);
       // 404: already answered elsewhere, or no longer answerable, so the reload drops it.
       if (!res.ok && res.status !== 404) throw new Error();
@@ -265,6 +273,71 @@ function PendingRequest({ request: r, code, onRejected, onAnswered }) {
       )}
       {error && <p role="alert">{error}</p>}
     </li>
+  );
+}
+
+function Roster({ code, onRejected, reloadKey, onChanged }) {
+  const [registrants, setRegistrants] = useState(null);
+  const [error, setError] = useState(null);
+
+  async function load() {
+    setError(null);
+    try {
+      const res = await shelterFetch(code, onRejected, '/api/registrants');
+      if (res.status === 401) return;
+      if (!res.ok) throw new Error();
+      setRegistrants(await res.json());
+    } catch {
+      setError("Couldn't load the roster. Try again.");
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, [code, reloadKey]);
+
+  async function change(r, body) {
+    setError(null);
+    try {
+      const res = await shelterFetch(code, onRejected, `/api/registrants/${r.id}`, body);
+      if (res.status === 401) return;
+      // 404: marked Departed elsewhere, so the reload drops them.
+      if (!res.ok && res.status !== 404) throw new Error();
+      onChanged();
+    } catch {
+      setError(`Couldn't save the change for ${r.known_as}. Try again.`);
+    }
+  }
+
+  function depart(r) {
+    if (confirm(`Mark ${r.known_as} as Departed? They will leave the roster and can't be found.`)) change(r, { departed: true });
+  }
+
+  return (
+    <section aria-labelledby="roster-heading">
+      <h2 id="roster-heading">Shelter roster</h2>
+      <button type="button" onClick={load}>Refresh</button>
+      {error && <p role="alert">{error}</p>}
+      {registrants?.length === 0 && <p role="status">Nobody on the roster.</p>}
+      {registrants?.length > 0 && (
+        <ul>
+          {registrants.map((r) => (
+            <li key={r.id}>
+              <strong>{r.known_as}</strong>
+              {r.age_range && ` (${r.age_range})`}
+              {r.description && ` · ${r.description}`}
+              <ButtonGroup
+                legend={`Can people searching find ${r.known_as}?`}
+                options={VISIBILITIES}
+                value={r.visibility}
+                onChange={(visibility) => change(r, { visibility })}
+              />
+              <button type="button" onClick={() => depart(r)}>Mark Departed</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

@@ -183,7 +183,7 @@ test('Volunteer answers Yes and the Seeker sees the reply', async ({ page, reque
   await page.goto('/');
   await page.evaluate(() => localStorage.setItem('shelterCode', 'TEST-0000'));
   await page.reload();
-  const item = page.getByRole('listitem').filter({ hasText: 'Evangelina' });
+  const item = page.getByRole('region', { name: 'Pending requests' }).getByRole('listitem').filter({ hasText: 'Evangelina' });
   await expect(item).toContainText('Green coat');
   await expect(item).toContainText('Marta (Brother)');
   await expect(item).toContainText('Are you okay?');

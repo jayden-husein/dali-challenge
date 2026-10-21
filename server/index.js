@@ -57,6 +57,33 @@ app.post('/api/registrants', requireShelter, express.json(), async (req, res) =>
   res.status(201).json({ ...rows[0], shelter: req.shelter.name });
 });
 
+// Shelter roster: everyone still at this shelter. Departed Registrants have left.
+app.get('/api/registrants', requireShelter, async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT id, known_as, age_range, description, visibility FROM registrants
+     WHERE shelter_id = $1 AND NOT departed ORDER BY known_as`,
+    [req.shelter.id],
+  );
+  res.json(rows);
+});
+
+// Body is {visibility} or {departed: true}. Departed is final: they're off the roster.
+app.post('/api/registrants/:id', requireShelter, express.json(), async (req, res) => {
+  const { visibility, departed } = req.body ?? {};
+  if (departed !== true && !VISIBILITIES.includes(visibility)) {
+    return res.status(400).json({ error: 'Choose Findable, Not findable, or Departed.' });
+  }
+  const [column, value] = departed === true ? ['departed', true] : ['visibility', visibility];
+  const { rowCount } = UUID.test(req.params.id)
+    ? await pool.query(
+      `UPDATE registrants SET ${column} = $3 WHERE shelter_id = $1 AND id = $2 AND NOT departed`,
+      [req.shelter.id, req.params.id, value],
+    )
+    : { rowCount: 0 };
+  if (!rowCount) return res.status(404).json({ error: 'Not found.' });
+  res.status(204).end();
+});
+
 // Per IP, so nobody can scrape Registrants by searching.
 const searchLimit = rateLimit({ windowMs: 60_000, limit: 30, message: { error: 'Too many searches. Wait a minute and try again.' } });
 
