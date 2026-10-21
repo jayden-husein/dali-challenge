@@ -13,7 +13,7 @@ Someone looking for a Registrant, from a shelter or from their own device.
 _Avoid_: Searcher, family member, requester
 
 **Departed**:
-A Registrant who has left their shelter. No longer findable, and Contact Requests for them never reach a Volunteer. The Seeker still sees "passed on", as for any other request.
+A Registrant who has left their shelter. Undone if they come back. No longer findable, and Contact Requests for them never reach a Volunteer. The Seeker still sees "passed on", as for any other request.
 _Avoid_: Discharged, checked out, inactive
 
 **Volunteer**:
